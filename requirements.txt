@@ -4,3 +4,8 @@ transformers
 torch
 gTTS
 python-dotenv
+googletrans
+pyttsx3
+torchvision
+timm
+deep-translator
