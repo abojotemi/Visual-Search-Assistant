@@ -1,59 +1,30 @@
-import os
+# utils.py
+import io
 from PIL import Image
-import uuid
+from typing import Union, Optional
+import streamlit as st
+from config import config
 
-def save_uploaded_file(uploaded_file):
-    """
-    Save an uploaded file to a temporary directory.
-    
-    Args:
-        uploaded_file: StreamLit uploaded file object
-        
-    Returns:
-        str: Path to the saved file
-    """
+def validate_image(image_file: Union[str, bytes, io.BytesIO]) -> bool:
+    """Validate uploaded image file."""
     try:
-        # Create temp dir if it doesn't exist
-        temp_dir = "static/temp"
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
+        with Image.open(image_file) as img:
+            # Check file size
+            img.verify()
+            if image_file.size > config.MAX_IMAGE_SIZE:
+                raise ValueError("Image file too large")
             
-        # Generate unique filename
-        file_extension = os.path.splitext(uploaded_file.name)[1]
-        filename = f"upload_{str(uuid.uuid4())[:8]}{file_extension}"
-        filepath = os.path.join(temp_dir, filename)
-        
-        # Save the file
-        with open(filepath, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+            # Check file type
+            fmt = img.format.lower()
+            if fmt not in config.VALID_IMAGE_TYPES:
+                raise ValueError(f"Unsupported image type: {fmt}")
             
-        return filepath
+            return True
     except Exception as e:
-        return None
-
-def validate_image(file):
-    """
-    Validate that the uploaded file is an image.
-    
-    Args:
-        file: StreamLit uploaded file object
-        
-    Returns:
-        bool: True if valid image, False otherwise
-    """
-    try:
-        Image.open(file)
-        return True
-    except:
+        st.error(f"Image validation failed: {str(e)}")
         return False
 
-def cleanup_old_files(directory="static/temp"):
-    """Clean up old files except .gitkeep"""
-    try:
-        for file in os.listdir(directory):
-            if file != ".gitkeep":
-                file_path = os.path.join(directory, file)
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-    except Exception as e:
-        print(f"Error cleaning up files: {str(e)}")
+def cache_key_builder(*args, **kwargs) -> str:
+    """Build cache key from args and kwargs."""
+    return f"{'-'.join(str(arg) for arg in args)}-{'-'.join(f'{k}:{v}' for k, v in kwargs.items())}"
+
