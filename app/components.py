@@ -1,60 +1,118 @@
-# components.py
+import requests
+from PIL import Image
 import streamlit as st
-import base64
-from gtts import gTTS
-import io
-import re
-from typing import Dict, Any
+from dotenv import load_dotenv
+import os
+import tempfile
+import logging
+from pathlib import Path
 
-class UIComponents:
-    @staticmethod
-    def create_workout_card(exercise: str, sets: int, reps: int, rest: int) -> str:
-        """Create a visually appealing workout card."""
-        return f'''
-        <div style="
-            background-color: #f0f2f6;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 10px 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1)
-        ">
-            <h3 style="color: #0066cc; margin: 0 0 10px 0">{exercise}</h3>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px">
-                <span style="background: #0066cc; color: white; padding: 5px 10px; border-radius: 5px">
-                    Sets: {sets}
-                </span>
-                <span style="background: #0066cc; color: white; padding: 5px 10px; border-radius: 5px">
-                    Reps: {reps}
-                </span>
-                <span style="background: #0066cc; color: white; padding: 5px 10px; border-radius: 5px">
-                    Rest: {rest}s
-                </span>
-            </div>
-        </div>
-        '''
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    @staticmethod
-    def text_to_speech(text: str) -> str:
-        """Convert text to speech and return audio player HTML."""
+# Load environment variables
+load_dotenv()
+API_KEY = os.getenv("HF_API_KEY")
+if not API_KEY:
+    raise ValueError("HF_API_KEY not found in environment variables")
+
+# Hugging Face API details
+API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+headers = {"Authorization": f"Bearer {API_KEY}"}
+
+def query_image(image_path):
+    """
+    Query the Hugging Face API with an image file.
+    
+    Args:
+        image_path (str): Path to the image file
+        
+    Returns:
+        dict: API response
+        
+    Raises:
+        requests.exceptions.RequestException: If API call fails
+    """
+    try:
+        with open(image_path, "rb") as file:
+            data = file.read()
+            response = requests.post(
+                API_URL, 
+                headers=headers, 
+                data=data,  # Send raw bytes instead of using files parameter
+                timeout=10
+            )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API request failed: {str(e)}")
+        logger.error(f"Response content: {response.content if 'response' in locals() else 'No response'}")
+        raise
+
+def save_uploadedfile(uploadedfile):
+    """
+    Safely save uploaded file to a temporary directory.
+    
+    Args:
+        uploadedfile: Streamlit UploadedFile object
+        
+    Returns:
+        Path: Path to saved temporary file
+    """
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploadedfile.name).suffix) as tmp_file:
+            tmp_file.write(uploadedfile.getvalue())
+            return Path(tmp_file.name)
+    except Exception as e:
+        logger.error(f"Failed to save uploaded file: {str(e)}")
+        raise
+
+def main():
+    st.title("BLIP Image Captioning with Hugging Face Inference API")
+    
+    # File uploader with size limit (10MB)
+    uploaded_file = st.file_uploader(
+        "Choose an image...", 
+        type=["jpg", "jpeg", "png"],
+        accept_multiple_files=False
+    )
+
+    if uploaded_file is not None:
+        # Check file size (10MB limit)
+        if uploaded_file.size > 10 * 1024 * 1024:
+            st.error("File size too large. Please upload an image smaller than 10MB.")
+            return
+
         try:
-            # Clean markdown
-            cleaned_text = re.sub(r'[#*_\[\]\(\)]', '', text).strip()
-            
-            # Create speech
-            tts = gTTS(text=cleaned_text, lang=config.DEFAULT_LANG)
-            audio_fp = io.BytesIO()
-            tts.write_to_fp(audio_fp)
-            audio_fp.seek(0)
-            
-            # Encode to base64
-            audio_str = base64.b64encode(audio_fp.read()).decode()
-            
-            return f'''
-                <audio controls autoplay>
-                    <source src="data:audio/mp3;base64,{audio_str}" type="audio/mp3">
-                    Your browser does not support the audio element.
-                </audio>
-            '''
+            # Display image
+            image = Image.open(uploaded_file)
+            st.image(image, caption="Uploaded Image", use_column_width=True)
+
+            # Save image to temporary file
+            with st.spinner("Processing image..."):
+                temp_path = save_uploadedfile(uploaded_file)
+                
+                try:
+                    # Query the API
+                    result = query_image(str(temp_path))
+                    
+                    # Display the caption
+                    if isinstance(result, list):
+                        caption = result[0].get("generated_text", "No caption generated.")
+                    else:
+                        caption = result.get("generated_text", "No caption generated.")
+                    st.success(f"**Caption**: {caption}")
+                    
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Error calling the API: {str(e)}")
+                    logger.error(f"Full error details: {str(e)}")
+                finally:
+                    # Clean up temporary file
+                    temp_path.unlink()
+                    
         except Exception as e:
-            st.error(f"Error generating audio: {str(e)}")
-            return ""
+            st.error(f"Error processing image: {str(e)}")
+
+if __name__ == "__main__":
+    main()

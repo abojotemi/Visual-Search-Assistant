@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 from dataclasses import dataclass
 import logging
 import json
-from workout import WorkoutImageAnalyzer
+from workout import predict_image
 from llm import LLMHandler
 from gtts import gTTS
 import re
@@ -308,9 +308,9 @@ class FitAI:
                 st.image(img, caption="Your equipment", use_container_width=True)
                 
                 if st.button("Analyze Equipment"):
-                    workout_image_analyzer = WorkoutImageAnalyzer()
+                    
                     with st.spinner("Analyzing your equipment..."):
-                        equipment = workout_image_analyzer.predict_image(img)  # Assuming this function is imported
+                        equipment = predict_image(img)  
                         if equipment:
                             st.success("Equipment analyzed successfully!")
                             st.write("Detected equipment:", equipment)
