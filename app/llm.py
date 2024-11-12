@@ -1,7 +1,5 @@
 from langchain_google_genai import (
     ChatGoogleGenerativeAI,
-    HarmBlockThreshold,
-    HarmCategory,
     )
 from langchain.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
@@ -12,9 +10,6 @@ def render_llm(input):
     llm = ChatGoogleGenerativeAI(
         model="gemini-1.5-flash",
         temperature=0.7,
-        safety_settings={
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        },
     )
     
     messages = [
@@ -43,13 +38,11 @@ def render_llm(input):
     return msg
 
 
-def summarize_message(message):
+def summarizer(message):
     llm = ChatGoogleGenerativeAI(
         model="gemini-1.5-flash",
         temperature=0.7,
-        safety_settings={
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        },
+
     )
     
     messages = [
@@ -63,4 +56,34 @@ def summarize_message(message):
     )
     chain = prompt | llm
     response = chain.invoke({'msg':message})
+    return response.content
+
+
+
+def workout_planner(msg, info):
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-1.5-flash",
+        temperature=0.7,
+    )
+    
+    messages = [
+        ('system', "You are a workout planner. Your job is to generate a workout plan based on the user's workout equipment."),
+        ('human', """Equipments: {msg}
+         - Name: {name}
+         - Age: {age}
+         - Sex: {sex}
+         - Weight: {weight}
+         - Height: {height}
+         - Goals: {goals}
+         """),
+    ]
+
+
+    prompt = ChatPromptTemplate.from_messages(
+        messages
+    )
+    chain = prompt | llm
+    info.update({'msg': msg})
+    del info['country']
+    response = chain.invoke(info)   
     return response.content
